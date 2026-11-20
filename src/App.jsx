@@ -6,6 +6,9 @@ import { CountersSection, ItemsSection } from './components/Items.jsx'
 import { ProjectDialog } from './components/ProjectDialog.jsx'
 import { Confirm, Icon, IconButton, IntInput } from './components/ui.jsx'
 
+// Imágenes
+import logo from './assets/icon.png'
+
 function RunsPanel({ runs, onChange }) {
   const [extra, setExtra] = useState('')
   const addExtra = (e) => {
@@ -84,6 +87,8 @@ function ProjectView({ project, onChange, onEdit, onReset, onDelete, confirm }) 
                   independent={independent}
                   hidden={project.hiddenLines}
                   onToggle={toggleLine}
+                  view={project.cumView}
+                  onView={(v) => onChange((pr) => ({ ...pr, cumView: v }))}
                 />
               </div>
             )}
@@ -166,9 +171,7 @@ export default function App() {
     <div className="app">
       <aside className="sidebar">
         <div className="brand">
-          <span className="brand-mark">
-            <Icon name="check" size={14} />
-          </span>
+          <img className="brand-mark"src={logo} alt="Logo"/>
           Drop Tracker
         </div>
 

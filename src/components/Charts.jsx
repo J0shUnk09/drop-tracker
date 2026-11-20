@@ -50,11 +50,23 @@ const Empty = ({ children = 'Sin datos' }) => <div className="chart-empty">{chil
 
 /* ---------- Probabilidad acumulada (líneas) ---------- */
 
-export function CumulativeChart({ rows, runs, independent, hidden, onToggle }) {
+export function CumulativeChart({ rows, runs, independent, hidden, onToggle, view, onView }) {
   const box = useBox()
   const [hover, setHover] = useState(null)
   const series = rows.filter((r) => r.eff != null)
   const shown = series.filter((r) => !hidden.includes(r.id))
+  const streak = !independent && view === 'streak'
+
+  const toggle = independent ? null : (
+    <div className="seg seg-sm" role="group" aria-label="Vista">
+      <button type="button" aria-pressed={!streak} onClick={() => onView('total')}>
+        Desde el inicio
+      </button>
+      <button type="button" aria-pressed={streak} onClick={() => onView('streak')}>
+        Desde el último drop
+      </button>
+    </div>
+  )
 
   const legend =
     series.length > 1 ? (
@@ -81,7 +93,11 @@ export function CumulativeChart({ rows, runs, independent, hidden, onToggle }) {
   const ih = h - m.t - m.b
 
   const n90s = shown.map((r) => r.n90).filter(Number.isFinite)
-  const reach = independent ? Math.max(0, ...shown.map((r) => r.n)) : runs
+  const reach = independent
+    ? Math.max(0, ...shown.map((r) => r.n))
+    : streak
+      ? Math.max(0, ...shown.map((r) => r.dry))
+      : runs
   const target = Math.max(reach * 1.3, n90s.length ? Math.min(...n90s) : 0, 10)
   const xt = niceTicks(target, 5)
   const xmax = xt[xt.length - 1]
@@ -105,7 +121,7 @@ export function CumulativeChart({ rows, runs, independent, hidden, onToggle }) {
     box.show(
       e,
       <>
-        <div className="tip-title">Run {fmtInt(v)}</div>
+        <div className="tip-title">{streak ? 'Racha' : 'Run'} {fmtInt(v)}</div>
         {shown.map((r) => (
           <div className="tip-row" key={r.id}>
             <i style={{ background: color(r.slot) }} />
@@ -119,7 +135,15 @@ export function CumulativeChart({ rows, runs, independent, hidden, onToggle }) {
   }
 
   return (
-    <ChartCard title="Probabilidad acumulada" legend={legend}>
+    <ChartCard
+      title="Probabilidad acumulada"
+      legend={
+      <div className="chart-tools">
+      {toggle}
+      {legend}
+      </div>
+      }
+    >
       <div className="chart-body" ref={box.ref}>
         {!series.length && <Empty />}
         <svg
@@ -143,7 +167,7 @@ export function CumulativeChart({ rows, runs, independent, hidden, onToggle }) {
               {fmtInt(v)}
             </text>
           ))}
-          {!independent && runs > 0 && runs <= xmax && (
+          {!independent && !streak && runs > 0 && runs <= xmax && (
             <line className="now-line" x1={X(runs)} x2={X(runs)} y1={m.t} y2={Y(0)} />
           )}
           {shown.map((r) => (
@@ -160,7 +184,7 @@ export function CumulativeChart({ rows, runs, independent, hidden, onToggle }) {
           ))}
           {hover != null && <line className="cross" x1={X(hover)} x2={X(hover)} y1={m.t} y2={Y(0)} />}
           {shown.map((r) => {
-            const at = hover ?? (independent ? r.n : runs)
+            const at = hover ?? (independent ? r.n : streak ? r.dry : runs)
             if (at > xmax) return null
             return (
               <circle

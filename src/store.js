@@ -51,6 +51,7 @@ function normalizeProject(p) {
     id: String(p.id || uid()),
     name: String(p.name || 'Sin nombre'),
     mode: p.mode === 'independent' ? 'independent' : 'global',
+    cumView: p.cumView === 'streak' ? 'streak' : 'total',
     runs: int(p.runs),
     charts: Array.isArray(p.charts) ? p.charts.filter((c) => CHARTS.some((x) => x.id === c)) : ['cumulative'],
     hiddenLines: Array.isArray(p.hiddenLines) ? p.hiddenLines.map(String) : [],

@@ -119,7 +119,7 @@ export function parseProb(raw) {
   else if ((m = s.match(/^(.+?)\s*(?:\/|:|en|in|de)\s*(.+)$/))) p = toNum(m[1]) / toNum(m[2])
   else {
     const v = toNum(s)
-    p = v > 1 ? 1 / v : v
+    p = v > 100 ? 1 / v : v / 100
   }
   return Number.isFinite(p) && p > 0 && p <= 1 ? { ok: true, p } : { ok: false }
 }

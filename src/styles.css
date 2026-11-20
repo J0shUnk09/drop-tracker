@@ -1092,6 +1092,24 @@ input.stepper-input:disabled {
   box-shadow: 0 0 0 1px var(--border), var(--shadow);
 }
 
+.seg.seg-sm {
+  display: inline-grid;
+  grid-template-columns: auto auto;
+}
+
+.seg-sm button {
+  height: 26px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.chart-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+}
+
 /* ---------- Modal ---------- */
 
 .modal {
