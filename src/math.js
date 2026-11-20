@@ -72,6 +72,13 @@ export function binomLuck(k, n, p) {
   return { mid: Math.min(1, lt + eq / 2), atLeast }
 }
 
+// Suerte al obtener un objeto exactamente en el intento n (distribución geométrica):
+// proporción de jugadores que habrían necesitado más intentos (mid-p).
+export function geomLuck(n, p) {
+  if (n <= 0 || p <= 0) return null
+  return Math.min(1, missProb(p, n) + 0.5 * p * missProb(p, n - 1))
+}
+
 // Estima la probabilidad por intento a partir de k drops en n intentos.
 // Intervalo de Wilson al 95 %. Sin drops solo hay una cota superior.
 export function estimateRate(k, n) {

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { fmtInt } from './math.js'
-import { analyze, load, newProject, normalize, save } from './store.js'
+import { analyze, chartsFor, load, newProject, normalize, save } from './store.js'
 import { CumulativeChart, ExpectedChart, LuckChart, TimelineChart } from './components/Charts.jsx'
 import { CountersSection, ItemsSection } from './components/Items.jsx'
 import { ProjectDialog } from './components/ProjectDialog.jsx'
@@ -46,7 +46,9 @@ function RunsPanel({ runs, onChange }) {
 
 function ProjectView({ project, onChange, onEdit, onReset, onDelete, confirm }) {
   const rows = useMemo(() => analyze(project), [project])
-  const has = (id) => project.charts.includes(id)
+  const independent = project.mode === 'independent'
+  const available = chartsFor(project.mode).map((c) => c.id)
+  const has = (id) => project.charts.includes(id) && available.includes(id)
   const toggleLine = (id) =>
     onChange((pr) => ({
       ...pr,
@@ -64,11 +66,11 @@ function ProjectView({ project, onChange, onEdit, onReset, onDelete, confirm }) 
         </div>
       </header>
 
-      <RunsPanel runs={project.runs} onChange={(v) => onChange((pr) => ({ ...pr, runs: v }))} />
+      {!independent && <RunsPanel runs={project.runs} onChange={(v) => onChange((pr) => ({ ...pr, runs: v }))} />}
       <ItemsSection project={project} rows={rows} onChange={onChange} confirm={confirm} />
       <CountersSection project={project} onChange={onChange} confirm={confirm} />
 
-      {project.charts.length > 0 && (
+      {available.some(has) && (
         <section className="section">
           <div className="section-head">
             <h2>Gráficos</h2>
@@ -76,11 +78,17 @@ function ProjectView({ project, onChange, onEdit, onReset, onDelete, confirm }) 
           <div className="charts">
             {has('cumulative') && (
               <div className="span-2">
-                <CumulativeChart rows={rows} runs={project.runs} hidden={project.hiddenLines} onToggle={toggleLine} />
+                <CumulativeChart
+                  rows={rows}
+                  runs={project.runs}
+                  independent={independent}
+                  hidden={project.hiddenLines}
+                  onToggle={toggleLine}
+                />
               </div>
             )}
             {has('expected') && <ExpectedChart rows={rows} />}
-            {has('luck') && <LuckChart rows={rows} />}
+            {has('luck') && <LuckChart rows={rows} independent={independent} />}
             {has('timeline') && (
               <div className="span-2">
                 <TimelineChart rows={rows} runs={project.runs} />
@@ -112,8 +120,8 @@ export default function App() {
   const patchProject = (id, fn) =>
     setState((s) => ({ ...s, projects: s.projects.map((p) => (p.id === id ? fn(p) : p)) }))
 
-  const createProject = ({ name, charts }) => {
-    const p = newProject(name, charts)
+  const createProject = ({ name, charts, mode }) => {
+    const p = newProject(name, charts, mode)
     setState((s) => ({ ...s, projects: [...s.projects, p], activeId: p.id }))
   }
 
@@ -174,7 +182,13 @@ export default function App() {
               onClick={() => setState((s) => ({ ...s, activeId: p.id }))}
             >
               <span className="project-link-name">{p.name}</span>
-              <span className="project-link-runs">{fmtInt(p.runs)}</span>
+              <span className="project-link-runs">
+                {p.mode === 'independent'
+                  ? p.items.length
+                    ? `${p.items.filter((i) => i.obtained).length}/${p.items.length}`
+                    : ''
+                  : fmtInt(p.runs)}
+              </span>
             </button>
           ))}
           <button type="button" className="project-new" onClick={() => setDialog('create')}>
@@ -216,7 +230,7 @@ export default function App() {
                   patchProject(project.id, (pr) => ({
                     ...pr,
                     runs: 0,
-                    items: pr.items.map((i) => ({ ...i, drops: [], startRun: 0 })),
+                    items: pr.items.map((i) => ({ ...i, drops: [], startRun: 0, runs: 0, obtained: false })),
                     counters: pr.counters.map((c) => ({ ...c, count: 0 })),
                   })),
               })

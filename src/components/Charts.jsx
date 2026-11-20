@@ -50,7 +50,7 @@ const Empty = ({ children = 'Sin datos' }) => <div className="chart-empty">{chil
 
 /* ---------- Probabilidad acumulada (líneas) ---------- */
 
-export function CumulativeChart({ rows, runs, hidden, onToggle }) {
+export function CumulativeChart({ rows, runs, independent, hidden, onToggle }) {
   const box = useBox()
   const [hover, setHover] = useState(null)
   const series = rows.filter((r) => r.eff != null)
@@ -81,7 +81,8 @@ export function CumulativeChart({ rows, runs, hidden, onToggle }) {
   const ih = h - m.t - m.b
 
   const n90s = shown.map((r) => r.n90).filter(Number.isFinite)
-  const target = Math.max(runs * 1.3, n90s.length ? Math.min(...n90s) : 0, 10)
+  const reach = independent ? Math.max(0, ...shown.map((r) => r.n)) : runs
+  const target = Math.max(reach * 1.3, n90s.length ? Math.min(...n90s) : 0, 10)
   const xt = niceTicks(target, 5)
   const xmax = xt[xt.length - 1]
   const X = (v) => m.l + (v / xmax) * iw
@@ -142,7 +143,7 @@ export function CumulativeChart({ rows, runs, hidden, onToggle }) {
               {fmtInt(v)}
             </text>
           ))}
-          {runs > 0 && runs <= xmax && (
+          {!independent && runs > 0 && runs <= xmax && (
             <line className="now-line" x1={X(runs)} x2={X(runs)} y1={m.t} y2={Y(0)} />
           )}
           {shown.map((r) => (
@@ -159,7 +160,7 @@ export function CumulativeChart({ rows, runs, hidden, onToggle }) {
           ))}
           {hover != null && <line className="cross" x1={X(hover)} x2={X(hover)} y1={m.t} y2={Y(0)} />}
           {shown.map((r) => {
-            const at = hover ?? runs
+            const at = hover ?? (independent ? r.n : runs)
             if (at > xmax) return null
             return (
               <circle
@@ -341,7 +342,7 @@ export function TimelineChart({ rows, runs }) {
 
 /* ---------- Suerte (percentil) ---------- */
 
-export function LuckChart({ rows }) {
+export function LuckChart({ rows, independent }) {
   const box = useBox()
   const data = rows.filter((r) => r.luck)
 
@@ -364,10 +365,17 @@ export function LuckChart({ rows }) {
                       <span>Más suerte que</span>
                       <b>{fmtPct(r.luck.mid)}</b>
                     </div>
-                    <div className="tip-row">
-                      <span>Prob. de {fmtInt(r.k)} o más</span>
-                      <b>{fmtPct(r.luck.atLeast)}</b>
-                    </div>
+                    {independent ? (
+                      <div className="tip-row">
+                        <span>{r.obtained ? 'Obtenido en la run' : 'Runs'}</span>
+                        <b>{fmtInt(r.n)}</b>
+                      </div>
+                    ) : (
+                      <div className="tip-row">
+                        <span>Prob. de {fmtInt(r.k)} o más</span>
+                        <b>{fmtPct(r.luck.atLeast)}</b>
+                      </div>
+                    )}
                   </>,
                 )
               }

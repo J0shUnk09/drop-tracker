@@ -1,19 +1,33 @@
-import { binomLuck, estimateRate, hitProb, missProb, runsForChance } from './math.js'
+import { binomLuck, estimateRate, geomLuck, hitProb, missProb, runsForChance } from './math.js'
 
 const KEY = 'drop-tracker:v1'
 
 export const CHARTS = [
-  { id: 'cumulative', label: 'Probabilidad acumulada' },
-  { id: 'expected', label: 'Real vs. esperado' },
-  { id: 'timeline', label: 'Línea de tiempo' },
-  { id: 'luck', label: 'Suerte' },
+  { id: 'cumulative', label: 'Probabilidad acumulada', modes: ['global', 'independent'] },
+  { id: 'expected', label: 'Real vs. esperado', modes: ['global'] },
+  { id: 'timeline', label: 'Línea de tiempo', modes: ['global'] },
+  { id: 'luck', label: 'Suerte', modes: ['global', 'independent'] },
 ]
+
+export const chartsFor = (mode) => CHARTS.filter((c) => c.modes.includes(mode))
 
 export const uid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4)
 
-export const newProject = (name, charts) => ({
+export const newItem = (name, p, slot) => ({
   id: uid(),
   name,
+  p,
+  drops: [],
+  startRun: 0,
+  runs: 0,
+  obtained: false,
+  slot,
+})
+
+export const newProject = (name, charts, mode = 'global') => ({
+  id: uid(),
+  name,
+  mode,
   runs: 0,
   charts,
   hiddenLines: [],
@@ -36,6 +50,7 @@ function normalizeProject(p) {
   return {
     id: String(p.id || uid()),
     name: String(p.name || 'Sin nombre'),
+    mode: p.mode === 'independent' ? 'independent' : 'global',
     runs: int(p.runs),
     charts: Array.isArray(p.charts) ? p.charts.filter((c) => CHARTS.some((x) => x.id === c)) : ['cumulative'],
     hiddenLines: Array.isArray(p.hiddenLines) ? p.hiddenLines.map(String) : [],
@@ -48,6 +63,8 @@ function normalizeProject(p) {
         p: Number.isFinite(i.p) && i.p > 0 && i.p <= 1 ? i.p : null,
         drops: Array.isArray(i.drops) ? i.drops.map((d) => int(d)) : [],
         startRun: int(i.startRun),
+        runs: int(i.runs),
+        obtained: Boolean(i.obtained),
         slot: Number.isInteger(i.slot) ? i.slot % 8 : idx % 8,
       })),
     counters: (Array.isArray(p.counters) ? p.counters : [])
@@ -85,20 +102,30 @@ export function save(state) {
 
 /* Estadísticas derivadas de cada objeto */
 export function analyze(project) {
+  const ind = project.mode === 'independent'
   const runs = project.runs
   return project.items.map((item) => {
-    const k = item.drops.length
-    const n = Math.max(0, runs - item.startRun)
+    // Modo independiente: cada objeto tiene sus propias runs y un estado de obtenido
+    const k = ind ? (item.obtained ? 1 : 0) : item.drops.length
+    const n = ind ? item.runs : Math.max(0, runs - item.startRun)
     const known = item.p != null
     const est = known ? null : estimateRate(k, n)
     const eff = known ? item.p : est?.p ?? null
     const last = item.drops.reduce((a, b) => Math.max(a, b), item.startRun)
     const dry = Math.max(0, runs - last)
+
+    let luck = null
+    if (known) {
+      if (!ind) luck = binomLuck(k, n, item.p)
+      else if (n > 0) luck = { mid: item.obtained ? geomLuck(n, item.p) : 0.5 * missProb(item.p, n) }
+    }
+
     return {
       id: item.id,
       name: item.name,
       slot: item.slot,
       drops: item.drops,
+      obtained: item.obtained,
       known,
       p: item.p,
       est,
@@ -106,12 +133,12 @@ export function analyze(project) {
       k,
       n,
       dry,
-      dryProb: known ? missProb(item.p, dry) : null,
+      dryProb: known && !ind ? missProb(item.p, dry) : null,
       hit: eff != null ? hitProb(eff, n) : null,
       n50: eff != null ? runsForChance(eff, 0.5) : null,
       n90: eff != null ? runsForChance(eff, 0.9) : null,
-      expected: known ? n * item.p : null,
-      luck: known ? binomLuck(k, n, item.p) : null,
+      expected: known && !ind ? n * item.p : null,
+      luck,
     }
   })
 }

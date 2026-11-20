@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { fmtInt, fmtNum, fmtOneIn, fmtPct, parseProb, probToInput } from '../math.js'
-import { nextSlot, uid } from '../store.js'
+import { newItem, nextSlot, uid } from '../store.js'
 import { Icon, IconButton, IntInput, Modal } from './ui.jsx'
 
 const color = (slot) => `var(--s${(slot % 8) + 1})`
@@ -36,7 +36,7 @@ function ProbCell({ r }) {
   )
 }
 
-function ItemDialog({ item, row, onSave, onClose }) {
+function ItemDialog({ item, row, independent, onSave, onClose }) {
   const [name, setName] = useState(item.name)
   const [prob, setProb] = useState(probToInput(item.p))
   const [start, setStart] = useState(String(item.startRun))
@@ -46,7 +46,11 @@ function ItemDialog({ item, row, onSave, onClose }) {
     e.preventDefault()
     const r = parseProb(prob)
     if (!name.trim() || !r.ok) return setBad(!r.ok)
-    onSave({ name: name.trim(), p: r.p, startRun: Math.max(0, Math.floor(Number(start)) || 0) })
+    onSave({
+      name: name.trim(),
+      p: r.p,
+      ...(independent ? {} : { startRun: Math.max(0, Math.floor(Number(start)) || 0) }),
+    })
     onClose()
   }
 
@@ -74,10 +78,12 @@ function ItemDialog({ item, row, onSave, onClose }) {
             </button>
           )}
         </label>
-        <label className="field">
-          <span>Contar desde la run</span>
-          <input inputMode="numeric" value={start} onChange={(e) => setStart(e.target.value)} />
-        </label>
+        {!independent && (
+          <label className="field">
+            <span>Contar desde la run</span>
+            <input inputMode="numeric" value={start} onChange={(e) => setStart(e.target.value)} />
+          </label>
+        )}
         <div className="modal-actions">
           <button type="button" className="btn" onClick={onClose}>
             Cancelar
@@ -92,6 +98,8 @@ function ItemDialog({ item, row, onSave, onClose }) {
 }
 
 export function ItemsSection({ project, rows, onChange, confirm }) {
+  const independent = project.mode === 'independent'
+  const cols = independent ? 8 : 9
   const [name, setName] = useState('')
   const [prob, setProb] = useState('')
   const [bad, setBad] = useState(false)
@@ -103,10 +111,7 @@ export function ItemsSection({ project, rows, onChange, confirm }) {
     const r = parseProb(prob)
     if (!r.ok) return setBad(true)
     if (!n) return
-    onChange((pr) => ({
-      ...pr,
-      items: [...pr.items, { id: uid(), name: n, p: r.p, drops: [], startRun: 0, slot: nextSlot(pr.items) }],
-    }))
+    onChange((pr) => ({ ...pr, items: [...pr.items, newItem(n, r.p, nextSlot(pr.items))] }))
     setName('')
     setProb('')
     setBad(false)
@@ -148,24 +153,33 @@ export function ItemsSection({ project, rows, onChange, confirm }) {
       </form>
 
       <div className="card table-wrap">
-        <table className="table">
+        <table className={'table' + (independent ? ' table-compact' : '')}>
           <thead>
             <tr>
               <th>Objeto</th>
               <th>Probabilidad</th>
-              <th>Drops</th>
-              <th title="Runs desde el último drop">Racha</th>
+              {independent ? (
+                <>
+                  <th>Runs</th>
+                  <th>Estado</th>
+                </>
+              ) : (
+                <>
+                  <th>Drops</th>
+                  <th title="Runs desde el último drop">Racha</th>
+                </>
+              )}
               <th title="Probabilidad de haber obtenido al menos uno">Acumulada</th>
               <th title="Runs necesarias para 50 % y 90 % de probabilidad">50% · 90%</th>
-              <th title="Drops esperados con las runs actuales">Esperados</th>
-              <th title="Porcentaje de jugadores con menos drops que tú">Suerte</th>
+              {!independent && <th title="Drops esperados con las runs actuales">Esperados</th>}
+              <th title="Porcentaje de jugadores con peor suerte que tú">Suerte</th>
               <th />
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 && (
               <tr>
-                <td colSpan={9} className="table-empty">
+                <td colSpan={cols} className="table-empty">
                   Sin objetos
                 </td>
               </tr>
@@ -181,26 +195,76 @@ export function ItemsSection({ project, rows, onChange, confirm }) {
                 <td>
                   <ProbCell r={r} />
                 </td>
-                <td>
-                  <div className="stepper">
-                    <IconButton
-                      icon="minus"
-                      label="Quitar drop"
-                      disabled={r.k === 0}
-                      onClick={() => patchItem(r.id, (i) => ({ ...i, drops: i.drops.slice(0, -1) }))}
-                    />
-                    <span className="stepper-value">{fmtInt(r.k)}</span>
-                    <IconButton
-                      icon="plus"
-                      label="Registrar drop"
-                      onClick={() => patchItem(r.id, (i, pr) => ({ ...i, drops: [...i.drops, pr.runs] }))}
-                    />
-                  </div>
-                </td>
-                <td>
-                  <div className="strong">{fmtInt(r.dry)}</div>
-                  {r.known && r.n > 0 && <div className="sub">{fmtPct(r.dryProb)}</div>}
-                </td>
+                {independent ? (
+                  <>
+                    <td>
+                      <div className="stepper">
+                        <IconButton
+                          icon="minus"
+                          label="Restar run"
+                          disabled={r.obtained || r.n === 0}
+                          onClick={() => patchItem(r.id, (i) => ({ ...i, runs: Math.max(0, i.runs - 1) }))}
+                        />
+                        <IntInput
+                          className="stepper-input"
+                          value={r.n}
+                          disabled={r.obtained}
+                          ariaLabel={`Runs de ${r.name}`}
+                          onCommit={(v) => patchItem(r.id, (i) => ({ ...i, runs: v }))}
+                        />
+                        <IconButton
+                          icon="plus"
+                          label="Sumar run"
+                          disabled={r.obtained}
+                          onClick={() => patchItem(r.id, (i) => ({ ...i, runs: i.runs + 1 }))}
+                        />
+                      </div>
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="status-btn"
+                        aria-pressed={r.obtained}
+                        title={r.obtained ? 'Reabrir' : 'Marcar como obtenido'}
+                        onClick={() =>
+                          patchItem(r.id, (i) =>
+                            i.obtained
+                              ? { ...i, obtained: false }
+                              : { ...i, obtained: true, runs: Math.max(1, i.runs) },
+                          )
+                        }
+                      >
+                        <span className="status-box">
+                          <Icon name="check" size={11} />
+                        </span>
+                        Obtenido
+                      </button>
+                    </td>
+                  </>
+                ) : (
+                  <>
+                    <td>
+                      <div className="stepper">
+                        <IconButton
+                          icon="minus"
+                          label="Quitar drop"
+                          disabled={r.k === 0}
+                          onClick={() => patchItem(r.id, (i) => ({ ...i, drops: i.drops.slice(0, -1) }))}
+                        />
+                        <span className="stepper-value">{fmtInt(r.k)}</span>
+                        <IconButton
+                          icon="plus"
+                          label="Registrar drop"
+                          onClick={() => patchItem(r.id, (i, pr) => ({ ...i, drops: [...i.drops, pr.runs] }))}
+                        />
+                      </div>
+                    </td>
+                    <td>
+                      <div className="strong">{fmtInt(r.dry)}</div>
+                      {r.known && r.n > 0 && <div className="sub">{fmtPct(r.dryProb)}</div>}
+                    </td>
+                  </>
+                )}
                 <td>
                   <div className="strong">
                     {r.hit == null ? '—' : (r.known ? '' : '≈ ') + fmtPct(r.hit)}
@@ -211,9 +275,11 @@ export function ItemsSection({ project, rows, onChange, confirm }) {
                     {r.eff == null ? '—' : `${r.known ? '' : '≈ '}${fmtInt(r.n50)} · ${fmtInt(r.n90)}`}
                   </div>
                 </td>
-                <td>
-                  <div className="strong">{r.known ? fmtNum(r.expected) : '—'}</div>
-                </td>
+                {!independent && (
+                  <td>
+                    <div className="strong">{r.known ? fmtNum(r.expected) : '—'}</div>
+                  </td>
+                )}
                 <td>
                   <div className="strong">{r.luck ? fmtPct(r.luck.mid) : '—'}</div>
                 </td>
@@ -248,6 +314,7 @@ export function ItemsSection({ project, rows, onChange, confirm }) {
       {editingItem && (
         <ItemDialog
           item={editingItem}
+          independent={independent}
           row={rows.find((r) => r.id === editingItem.id)}
           onClose={() => setEditing(null)}
           onSave={(patch) => patchItem(editingItem.id, (i) => ({ ...i, ...patch }))}
@@ -365,9 +432,6 @@ export function CountersSection({ project, onChange, confirm }) {
                   onCommit={(v) => patch(c.id, (x) => ({ ...x, count: v }))}
                 />
                 <IconButton icon="plus" label="Sumar" onClick={() => patch(c.id, (x) => ({ ...x, count: x.count + 1 }))} />
-              </div>
-              <div className="sub">
-                {c.count > 0 && project.runs > 0 ? `1 cada ${fmtNum(project.runs / c.count, 1)} runs` : ' '}
               </div>
             </div>
           ))}

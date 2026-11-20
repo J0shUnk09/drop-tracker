@@ -96,7 +96,7 @@ export function Confirm({ title, text, action = 'Eliminar', danger = true, onCon
 }
 
 // Entero editable: acepta texto parcial mientras se escribe y confirma al salir
-export function IntInput({ value, onCommit, className, ariaLabel, min = 0 }) {
+export function IntInput({ value, onCommit, className, ariaLabel, min = 0, disabled }) {
   const [draft, setDraft] = useState(null)
   const commit = () => {
     if (draft == null) return
@@ -109,6 +109,7 @@ export function IntInput({ value, onCommit, className, ariaLabel, min = 0 }) {
       className={className}
       inputMode="numeric"
       aria-label={ariaLabel}
+      disabled={disabled}
       value={draft ?? String(value)}
       onFocus={(e) => e.target.select()}
       onChange={(e) => setDraft(e.target.value)}
