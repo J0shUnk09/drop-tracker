@@ -1,0 +1,117 @@
+import { binomLuck, estimateRate, hitProb, missProb, runsForChance } from './math.js'
+
+const KEY = 'drop-tracker:v1'
+
+export const CHARTS = [
+  { id: 'cumulative', label: 'Probabilidad acumulada' },
+  { id: 'expected', label: 'Real vs. esperado' },
+  { id: 'timeline', label: 'Línea de tiempo' },
+  { id: 'luck', label: 'Suerte' },
+]
+
+export const uid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4)
+
+export const newProject = (name, charts) => ({
+  id: uid(),
+  name,
+  runs: 0,
+  charts,
+  hiddenLines: [],
+  items: [],
+  counters: [],
+  createdAt: Date.now(),
+})
+
+export const nextSlot = (items) => {
+  const used = new Set(items.map((i) => i.slot))
+  for (let s = 0; s < 8; s++) if (!used.has(s)) return s
+  return items.length % 8
+}
+
+const int = (v, d = 0) => (Number.isFinite(Number(v)) ? Math.max(0, Math.floor(Number(v))) : d)
+
+function normalizeProject(p) {
+  if (!p || typeof p !== 'object') return null
+  const items = Array.isArray(p.items) ? p.items : []
+  return {
+    id: String(p.id || uid()),
+    name: String(p.name || 'Sin nombre'),
+    runs: int(p.runs),
+    charts: Array.isArray(p.charts) ? p.charts.filter((c) => CHARTS.some((x) => x.id === c)) : ['cumulative'],
+    hiddenLines: Array.isArray(p.hiddenLines) ? p.hiddenLines.map(String) : [],
+    createdAt: Number(p.createdAt) || Date.now(),
+    items: items
+      .filter((i) => i && typeof i === 'object')
+      .map((i, idx) => ({
+        id: String(i.id || uid()),
+        name: String(i.name || 'Objeto'),
+        p: Number.isFinite(i.p) && i.p > 0 && i.p <= 1 ? i.p : null,
+        drops: Array.isArray(i.drops) ? i.drops.map((d) => int(d)) : [],
+        startRun: int(i.startRun),
+        slot: Number.isInteger(i.slot) ? i.slot % 8 : idx % 8,
+      })),
+    counters: (Array.isArray(p.counters) ? p.counters : [])
+      .filter((c) => c && typeof c === 'object')
+      .map((c) => ({ id: String(c.id || uid()), name: String(c.name || 'Contador'), count: int(c.count) })),
+  }
+}
+
+export function normalize(s) {
+  const projects = (Array.isArray(s?.projects) ? s.projects : []).map(normalizeProject).filter(Boolean)
+  return {
+    version: 1,
+    theme: s?.theme === 'dark' || s?.theme === 'light' ? s.theme : null,
+    activeId: projects.some((p) => p.id === s?.activeId) ? s.activeId : projects[0]?.id ?? null,
+    projects,
+  }
+}
+
+export function load() {
+  try {
+    const raw = localStorage.getItem(KEY)
+    return normalize(raw ? JSON.parse(raw) : null)
+  } catch {
+    return normalize(null)
+  }
+}
+
+export function save(state) {
+  try {
+    localStorage.setItem(KEY, JSON.stringify(state))
+  } catch {
+    /* almacenamiento no disponible */
+  }
+}
+
+/* Estadísticas derivadas de cada objeto */
+export function analyze(project) {
+  const runs = project.runs
+  return project.items.map((item) => {
+    const k = item.drops.length
+    const n = Math.max(0, runs - item.startRun)
+    const known = item.p != null
+    const est = known ? null : estimateRate(k, n)
+    const eff = known ? item.p : est?.p ?? null
+    const last = item.drops.reduce((a, b) => Math.max(a, b), item.startRun)
+    const dry = Math.max(0, runs - last)
+    return {
+      id: item.id,
+      name: item.name,
+      slot: item.slot,
+      drops: item.drops,
+      known,
+      p: item.p,
+      est,
+      eff,
+      k,
+      n,
+      dry,
+      dryProb: known ? missProb(item.p, dry) : null,
+      hit: eff != null ? hitProb(eff, n) : null,
+      n50: eff != null ? runsForChance(eff, 0.5) : null,
+      n90: eff != null ? runsForChance(eff, 0.9) : null,
+      expected: known ? n * item.p : null,
+      luck: known ? binomLuck(k, n, item.p) : null,
+    }
+  })
+}
