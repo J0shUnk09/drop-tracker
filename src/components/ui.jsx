@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { evalExpr } from '../math.js'
 
 const PATHS = {
   plus: 'M12 5v14M5 12h14',
@@ -12,6 +13,9 @@ const PATHS = {
   x: 'M6 6l12 12M18 6L6 18',
   check: 'M5 12l5 5 9-10',
   reset: 'M4 12a8 8 0 1 1 2.5 5.8M4 19v-5h5',
+  image: 'M4 7h3l2-3h6l2 3h3v12H4zM12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z',
+  palette:
+    'M12 3a9 9 0 1 0 0 18c1.1 0 1.6-.9 1.2-1.7-.4-1 .3-2.3 1.5-2.3H17a4 4 0 0 0 4-4c0-5-4-10-9-10zM7.5 12.5h.01M9.5 8h.01M14.5 8h.01',
 }
 
 export function Icon({ name, size = 16 }) {
@@ -100,8 +104,8 @@ export function IntInput({ value, onCommit, className, ariaLabel, min = 0, disab
   const [draft, setDraft] = useState(null)
   const commit = () => {
     if (draft == null) return
-    const n = Math.floor(Number(String(draft).replace(/[^\d-]/g, '')))
-    if (Number.isFinite(n)) onCommit(Math.max(min, n))
+    const n = evalExpr(draft, value)
+    if (n != null) onCommit(Math.max(min, n))
     setDraft(null)
   }
   return (

@@ -1,4 +1,5 @@
 import { binomLuck, estimateRate, geomLuck, hitProb, missProb, runsForChance } from './math.js'
+import { normalizeCustom } from './theme.js'
 
 const KEY = 'drop-tracker:v1'
 
@@ -20,7 +21,8 @@ export const newItem = (name, p, slot) => ({
   drops: [],
   startRun: 0,
   runs: 0,
-  obtained: false,
+  history: [],
+  color: null,
   slot,
 })
 
@@ -64,8 +66,14 @@ function normalizeProject(p) {
         p: Number.isFinite(i.p) && i.p > 0 && i.p <= 1 ? i.p : null,
         drops: Array.isArray(i.drops) ? i.drops.map((d) => int(d)) : [],
         startRun: int(i.startRun),
-        runs: int(i.runs),
-        obtained: Boolean(i.obtained),
+        // intentos que tomó cada obtención (modo por objeto); migra el antiguo "obtained"
+        history: Array.isArray(i.history)
+          ? i.history.map((d) => Math.max(1, int(d)))
+          : i.obtained
+            ? [Math.max(1, int(i.runs))]
+            : [],
+        runs: !Array.isArray(i.history) && i.obtained ? 0 : int(i.runs),
+        color: /^#[0-9a-f]{6}$/i.test(i.color) ? i.color.toLowerCase() : null,
         slot: Number.isInteger(i.slot) ? i.slot % 8 : idx % 8,
       })),
     counters: (Array.isArray(p.counters) ? p.counters : [])
@@ -78,7 +86,8 @@ export function normalize(s) {
   const projects = (Array.isArray(s?.projects) ? s.projects : []).map(normalizeProject).filter(Boolean)
   return {
     version: 1,
-    theme: s?.theme === 'dark' || s?.theme === 'light' ? s.theme : null,
+    theme: ['light', 'dark', 'custom'].includes(s?.theme) ? s.theme : null,
+    custom: normalizeCustom(s?.custom),
     activeId: projects.some((p) => p.id === s?.activeId) ? s.activeId : projects[0]?.id ?? null,
     projects,
   }
@@ -106,11 +115,13 @@ export function analyze(project) {
   const ind = project.mode === 'independent'
   const runs = project.runs
   return project.items.map((item) => {
-    // Modo independiente: cada objeto tiene sus propias runs y un estado de obtenido
-    const k = ind ? (item.obtained ? 1 : 0) : item.drops.length
+    // Modo independiente: cada objeto lleva sus propias runs (desde la última obtención)
+    // y un historial con los intentos que tomó cada obtención
+    const total = ind ? item.history.reduce((a, b) => a + b, item.runs) : 0
+    const k = ind ? item.history.length : item.drops.length
     const n = ind ? item.runs : Math.max(0, runs - item.startRun)
     const known = item.p != null
-    const est = known ? null : estimateRate(k, n)
+    const est = known ? null : estimateRate(k, ind ? total : n)
     const eff = known ? item.p : est?.p ?? null
     const last = item.drops.reduce((a, b) => Math.max(a, b), item.startRun)
     const dry = Math.max(0, runs - last)
@@ -118,15 +129,20 @@ export function analyze(project) {
     let luck = null
     if (known) {
       if (!ind) luck = binomLuck(k, n, item.p)
-      else if (n > 0) luck = { mid: item.obtained ? geomLuck(n, item.p) : 0.5 * missProb(item.p, n) }
+      else if (k === 0) {
+        if (n > 0) luck = { mid: 0.5 * missProb(item.p, n) }
+      } else if (k === 1 && item.runs === 0) luck = { mid: geomLuck(item.history[0], item.p) }
+      else luck = binomLuck(k, total, item.p)
     }
 
     return {
       id: item.id,
       name: item.name,
-      slot: item.slot,
+      // número = posición de la paleta; texto = color personalizado (#rrggbb)
+      slot: item.color ?? item.slot,
       drops: item.drops,
-      obtained: item.obtained,
+      history: item.history,
+      total,
       known,
       p: item.p,
       est,

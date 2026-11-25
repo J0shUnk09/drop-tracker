@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { fmtInt, fmtNum, fmtOneIn, fmtPct, parseProb, probToInput } from '../math.js'
 import { newItem, nextSlot, uid } from '../store.js'
+import { ColorPopover } from './ColorPopover.jsx'
 import { Icon, IconButton, IntInput, Modal } from './ui.jsx'
 
-const color = (slot) => `var(--s${(slot % 8) + 1})`
+const color = (slot) => (typeof slot === 'string' ? slot : `var(--s${(slot % 8) + 1})`)
 
 function ProbCell({ r }) {
   if (r.known) {
@@ -104,6 +105,7 @@ export function ItemsSection({ project, rows, onChange, confirm }) {
   const [prob, setProb] = useState('')
   const [bad, setBad] = useState(false)
   const [editing, setEditing] = useState(null)
+  const [picking, setPicking] = useState(null)
 
   const add = (e) => {
     e.preventDefault()
@@ -121,6 +123,14 @@ export function ItemsSection({ project, rows, onChange, confirm }) {
     onChange((pr) => ({ ...pr, items: pr.items.map((i) => (i.id === id ? fn(i, pr) : i)) }))
 
   const editingItem = project.items.find((i) => i.id === editing)
+  const pickItem = project.items.find((i) => i.id === picking?.id)
+
+  const pickColor = (id, pick) =>
+    patchItem(id, (i, pr) => {
+      if (pick.auto) return { ...i, color: null, slot: nextSlot(pr.items.filter((x) => x.id !== id)) }
+      if (pick.color) return { ...i, color: pick.color }
+      return { ...i, color: null, slot: pick.slot }
+    })
 
   return (
     <section className="section">
@@ -188,7 +198,18 @@ export function ItemsSection({ project, rows, onChange, confirm }) {
               <tr key={r.id}>
                 <td>
                   <div className="name-cell">
-                    <i className="dot" style={{ background: color(r.slot) }} />
+                    <button
+                      type="button"
+                      className="dot-btn"
+                      data-color-dot
+                      aria-label={`Cambiar color de ${r.name}`}
+                      onClick={(e) => {
+                        const rect = e.currentTarget.getBoundingClientRect()
+                        setPicking((p) => (p?.id === r.id ? null : { id: r.id, rect }))
+                      }}
+                    >
+                      <i className="dot" style={{ background: color(r.slot) }} />
+                    </button>
                     <span className="strong">{r.name}</span>
                   </div>
                 </td>
@@ -202,43 +223,65 @@ export function ItemsSection({ project, rows, onChange, confirm }) {
                         <IconButton
                           icon="minus"
                           label="Restar run"
-                          disabled={r.obtained || r.n === 0}
+                          disabled={r.n === 0}
                           onClick={() => patchItem(r.id, (i) => ({ ...i, runs: Math.max(0, i.runs - 1) }))}
                         />
                         <IntInput
                           className="stepper-input"
                           value={r.n}
-                          disabled={r.obtained}
                           ariaLabel={`Runs de ${r.name}`}
                           onCommit={(v) => patchItem(r.id, (i) => ({ ...i, runs: v }))}
                         />
                         <IconButton
                           icon="plus"
                           label="Sumar run"
-                          disabled={r.obtained}
                           onClick={() => patchItem(r.id, (i) => ({ ...i, runs: i.runs + 1 }))}
                         />
                       </div>
                     </td>
                     <td>
-                      <button
-                        type="button"
-                        className="status-btn"
-                        aria-pressed={r.obtained}
-                        title={r.obtained ? 'Reabrir' : 'Marcar como obtenido'}
-                        onClick={() =>
-                          patchItem(r.id, (i) =>
-                            i.obtained
-                              ? { ...i, obtained: false }
-                              : { ...i, obtained: true, runs: Math.max(1, i.runs) },
-                          )
-                        }
-                      >
-                        <span className="status-box">
-                          <Icon name="check" size={11} />
-                        </span>
-                        Obtenido
-                      </button>
+                      <div className="status-cell">
+                        <button
+                          type="button"
+                          className="status-btn"
+                          data-done={r.history.length > 0}
+                          title={
+                            r.history.length
+                              ? `Intentos por obtención: ${r.history.join(', ')}`
+                              : 'Marcar como obtenido'
+                          }
+                          onClick={() =>
+                            patchItem(r.id, (i) => ({
+                              ...i,
+                              history: [...i.history, Math.max(1, i.runs)],
+                              runs: 0,
+                            }))
+                          }
+                        >
+                          <span className="status-box">
+                            <Icon name="check" size={11} />
+                          </span>
+                          Obtenido
+                          {r.history.length > 0 && <span className="status-count">×{r.history.length}</span>}
+                        </button>
+                        {r.history.length > 0 && (
+                          <IconButton
+                            icon="reset"
+                            label="Deshacer última obtención"
+                            onClick={() =>
+                              patchItem(r.id, (i) =>
+                                i.history.length
+                                  ? {
+                                      ...i,
+                                      history: i.history.slice(0, -1),
+                                      runs: i.runs + i.history[i.history.length - 1],
+                                    }
+                                  : i,
+                              )
+                            }
+                          />
+                        )}
+                      </div>
                     </td>
                   </>
                 ) : (
@@ -310,6 +353,15 @@ export function ItemsSection({ project, rows, onChange, confirm }) {
           </tbody>
         </table>
       </div>
+
+      {picking && pickItem && (
+        <ColorPopover
+          rect={picking.rect}
+          item={pickItem}
+          onPick={(p) => pickColor(picking.id, p)}
+          onClose={() => setPicking(null)}
+        />
+      )}
 
       {editingItem && (
         <ItemDialog

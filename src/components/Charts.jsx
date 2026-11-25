@@ -1,7 +1,7 @@
 import { useCallback, useLayoutEffect, useRef, useState } from 'react'
 import { clamp, fmtInt, fmtNum, fmtPct, hitProb, niceTicks } from '../math.js'
 
-const color = (slot) => `var(--s${(slot % 8) + 1})`
+const color = (slot) => (typeof slot === 'string' ? slot : `var(--s${(slot % 8) + 1})`)
 
 /* Caja de gráfico: mide el ancho y gestiona el tooltip */
 function useBox() {
@@ -296,6 +296,13 @@ export function ExpectedChart({ rows }) {
 
 /* ---------- Línea de tiempo de drops ---------- */
 
+// Agrupa los drops que cayeron en la misma run: [[run, cantidad], ...]
+const groupDrops = (drops) => {
+  const m = new Map()
+  for (const d of drops) m.set(d, (m.get(d) ?? 0) + 1)
+  return [...m]
+}
+
 export function TimelineChart({ rows, runs }) {
   const box = useBox()
   const xmax = Math.max(runs, 1)
@@ -326,11 +333,12 @@ export function TimelineChart({ rows, runs }) {
             {rows.map((r) => (
               <div className="strip-row" key={r.id}>
                 <span className="strip-base" />
-                {r.drops.map((d, i) => (
+                {groupDrops(r.drops).map(([d, count]) => (
                   <button
                     type="button"
-                    key={i}
+                    key={d}
                     className="strip-dot"
+                    data-multi={count > 1}
                     style={{ left: pos(Math.min(d, xmax)), background: color(r.slot) }}
                     aria-label={`${r.name}, run ${d}`}
                     onPointerMove={(e) =>
@@ -342,10 +350,18 @@ export function TimelineChart({ rows, runs }) {
                             <span>Run</span>
                             <b>{fmtInt(d)}</b>
                           </div>
+                          {count > 1 && (
+                            <div className="tip-row">
+                              <span>Drops</span>
+                              <b>{count}</b>
+                            </div>
+                          )}
                         </>,
                       )
                     }
-                  />
+                  >
+                    {count > 1 ? count : null}
+                  </button>
                 ))}
               </div>
             ))}
@@ -390,10 +406,16 @@ export function LuckChart({ rows, independent }) {
                       <b>{fmtPct(r.luck.mid)}</b>
                     </div>
                     {independent ? (
-                      <div className="tip-row">
-                        <span>{r.obtained ? 'Obtenido en la run' : 'Runs'}</span>
-                        <b>{fmtInt(r.n)}</b>
-                      </div>
+                      <>
+                        <div className="tip-row">
+                          <span>Obtenido</span>
+                          <b>{fmtInt(r.k)}×</b>
+                        </div>
+                        <div className="tip-row">
+                          <span>Runs totales</span>
+                          <b>{fmtInt(r.total)}</b>
+                        </div>
+                      </>
                     ) : (
                       <div className="tip-row">
                         <span>Prob. de {fmtInt(r.k)} o más</span>

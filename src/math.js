@@ -153,6 +153,63 @@ export function fmtOneIn(p) {
   return '1/' + (frac ? nf(1).format(N) : fmtInt(N))
 }
 
+/* ---------- Operaciones en campos numéricos ---------- */
+
+// Evalúa "10+5", "50-5", "(3+2)*4", "10x2"... y devuelve un entero (o null si es inválido).
+// Si empieza con un operador ("+5", "-3", "*2") se aplica sobre `current`.
+export function evalExpr(raw, current = 0) {
+  let s = String(raw ?? '')
+    .replace(/\s/g, '')
+    .replace(/,/g, '.')
+    .replace(/[x×]/gi, '*')
+    .replace(/÷/g, '/')
+  if (!s) return null
+  if (/^[+\-*/]/.test(s)) s = `(${current})${s}`
+  let i = 0
+  const num = () => {
+    const m = /^(\d+\.?\d*|\.\d+)/.exec(s.slice(i))
+    if (!m) throw new Error('num')
+    i += m[0].length
+    return parseFloat(m[0])
+  }
+  const factor = () => {
+    if (s[i] === '+') return i++, factor()
+    if (s[i] === '-') return i++, -factor()
+    if (s[i] === '(') {
+      i++
+      const v = sum()
+      if (s[i] !== ')') throw new Error(')')
+      i++
+      return v
+    }
+    return num()
+  }
+  const term = () => {
+    let v = factor()
+    while (s[i] === '*' || s[i] === '/') {
+      const op = s[i++]
+      const r = factor()
+      v = op === '*' ? v * r : v / r
+    }
+    return v
+  }
+  const sum = () => {
+    let v = term()
+    while (s[i] === '+' || s[i] === '-') {
+      const op = s[i++]
+      const r = term()
+      v = op === '+' ? v + r : v - r
+    }
+    return v
+  }
+  try {
+    const v = sum()
+    return i === s.length && Number.isFinite(v) ? Math.round(v) : null
+  } catch {
+    return null
+  }
+}
+
 /* ---------- Ejes ---------- */
 
 export function niceTicks(max, target = 5) {
